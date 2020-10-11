@@ -1,0 +1,74 @@
+Thank you for this opportunity. I have been working in a DOD env for the last 5 years and have been working mainly on on-premise infrastructure. I do have some experience in AWS migrations and implementations. Since this homework assignment was for a cloud-based environment, I chose to deploy the Lambda function using Puppet for the coding portion of this assignment.
+
+10-10 Million User (non-authenticated)
+
+Concept - A user visits the webpage which will prompt for long URL.  The lambda instance queries DynamoDB/DAX key-value store for the supplied long URL. If the long URL exists in DB, the user is supplied with the stored short URL. If the user supplies the short URL, lambda queries DB and redirects to the appropriate long URL destination. If the long URL does not exist, the short URL is generated and added to the database as a key-value with the long URL. This new short URL is then provided as a response to the end-user.
+
+Process:
+
+The user connects to Route 53 for DNS services. Route 53 hosts static IP for Cloudfront to serve the main webpage, while also hosting dynamic IP for regional API Gateways.
+
+Cloudfront hosts a static webpage outside of a VPC, while directing requests to API Gateways within VPC through Route 53 dynamic IP address. This service would serve webpage files that are stored in an S3 bucket.
+    
+API Gateway forwards the requests to Lambda instance(s) for processing. The API Gateway would also provide an access point for the Cloudwatch service for monitoring.
+       
+Lambda instances refer to DynamoDB Global tables using key-value stores, while also using multi-masters for replication with DAX enabled on DynamoDB for mem-caching of table data.
+    
+CloudWatch is used to monitor CloudFront, API Gateway and DB metrics for monitoring.
+
+
+
+
+10-10 Million User (Authenticated) (To address the final question in homework)
+
+The same design would be used to authenticated and non-authenticated environments to provide a common platform for ease of CI/CD.
+
+The user connects to Route 53 for DNS services. Route 53 hosts static IP for Cloudfront to serve the main webpage, while also hosting dynamic IP for regional API Gateways.
+
+Cloudfront hosts a static webpage outside of a VPC, while directing requests to API Gateways within VPC through Route 53 dynamic IP address. This service would serve webpage files that are stored in an S3 bucket.
+    
+API Gateway provides access to authentication services (IAM). If a user is authenticated, they are forwarded to Lamda Authenticated instance(s), while non authenticated users are forwarded to the Lambda instances described in the non-authenticated version above.
+    
+Two Lambda instances exist for API Gateway redirection. Authenticated Lambda instance’s storage is restricted to local secured datastores at sites inside VPN with asynchronous replication enabled. Unauthenticated users are redirected to the non-authenticated version of lambda which is outlined above in the 10-10 Million user non-auth version.
+    
+Cloudwatch is used to monitor CloudFront, API Gateway, and DB usage.
+
+
+
+Questions:
+
+What steps can be taken to mitigate downtime and data loss in the event of a database or other relevant storage failure?
+
+    All data is replicated across all regions in multi-master env. Lamba instances will also scale or heal according to load/failures. This will provide the maximum uptime as even during a regional failure, traffic would be rerouted to the next closest region and continue processing.
+ 
+How does the system change as it scales up or down?
+
+    Lambda instances scale 1 to 1 automatically, so as user load increases more instances of Lambda would spin up in that particular region, and as load scales down, instances scale down automatically. DynamoDB also auto-scales to provide ample storage for the database.
+
+What does it look like at 10 users vs 1 million users?
+
+    I would keep the same concept for 10 to 10 Million users to mitigate the need for updates to different environments. The 10 user env would be able to scale to 10 Million users seamlessly due to lambda autoscaling and DynamoDB scaling/multi-master replication.
+
+What steps should be taken to provide the majority of users with the highest quality service?
+
+    Route 53 would use latency based routing for regional instances when accessing the short URL web application. This would provide the user with the lowest possible latency while accessing globally replicated databases enabled with DAX for fast data responses. Regional auto-scaling and healing of systems would allow maximum uptime.
+
+What does the deployment process look like, both for initial deployments and for updates? 
+
+    The developer uploads test deployment or update to git. Jenkins then pulls the package into the test environment, for unit and load testing. One day later package is uploaded to the staging git branch where QA can run functionality testing. If all testing passes at QA, the following day data is uploaded to prod git branch where it is tested once more before being pushed into production instances.
+
+How do we measure the health and performance of the system?
+
+    I would use CloudWatch to monitor services while using Pingdom to measure response times. Cloudwatch would monitor API Gateway for usage and lambda metrics, which also monitoring DynamoDB for database response and activity.
+
+What steps would you take to secure these systems?
+
+    All services/systems after Cloudfront would be within VPC. Authenticated user data would be secured using different database endpoints within a vpn, while managing access at the API Gateway level. I would also deploy a Web Application Firewall to defend API gateways against malicious attacks. All credentials are stored as encrypted YAML in or order to be kept local to deployments.
+
+What cost considerations would there be?
+
+    While the cost of services may grow. The ability to have 1 DevOps engineer manage the entire environment would assist in Administrative overhead. The fact that lambda is auto-scaling would allow for minimal resources to be used based solely on load. If cost was still an issue we could likely sell ad space to increase revenue and have the web app pay for itself.
+
+What are the considerations for keeping it supported over time, including keeping support documentation up-to-date?
+
+    Since the same instances would be used for all scenarios, documentation updates would be minimal. To streamline the deployment process, ownership over the app and localized testing would be given to the developer who would upload the package to git branches to manage CI/CD deployment. Maintaining a simple CI/CD flow for ease of deployment by using Jenkins to deploy to test or production environments.
